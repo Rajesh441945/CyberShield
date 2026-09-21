@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}My Dashboard{% endblock %}
+{% block content %}
+
+<div class="dash-head">
+  <div>
+    <span class="badge">PERSONAL SECURITY</span>
+    <h1>My Dashboard</h1>
+    <p class="muted">Welcome back, {{ username }}.</p>
+  </div>
+</div>
+
+<div class="grid">
+  <a class="card module" href="{{ url_for('url_checker') }}">
+    🔗
+    <h3>Check a URL</h3>
+    <p>Analyze suspicious URL indicators.</p>
+  </a>
+
+  <a class="card module" href="{{ url_for('password_checker') }}">
+    🔐
+    <h3>Check Password</h3>
+    <p>Evaluate password strength without storing it.</p>
+  </a>
+</div>
+
+<div class="card">
+  <h2>My Recent Activity</h2>
+  <p class="muted">Only activity associated with your account is shown here.</p>
+
+  <div class="table">
+    <table>
+      <tr>
+        <th>Time</th>
+        <th>Type</th>
+        <th>Severity</th>
+        <th>Message</th>
+      </tr>
+
+      {% for event in events %}
+      <tr>
+        <td>{{ event.created_at }}</td>
+        <td>{{ event.event_type }}</td>
+        <td class="{{ event.severity|lower }}">{{ event.severity }}</td>
+        <td>{{ event.message }}</td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="4">No activity recorded yet.</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+</div>
+
+{% endblock %}

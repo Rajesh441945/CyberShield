@@ -25,3 +25,17 @@ This version still uses SQLite. On Render Free, the local filesystem is ephemera
 
 ## Security note
 Use a strong unique admin password. The login page no longer displays the credentials.
+
+
+## Role-based login
+
+CyberShield now uses one public login page.
+
+- Normal users can create accounts from the visible registration link.
+- Self-registered accounts always receive the `user` role.
+- The administrator account is created from the private Render environment variables `ADMIN_USERNAME` and `ADMIN_PASSWORD`.
+- No administrator login link, administrator credentials, or separate administrator login page is shown publicly.
+- After login, the server checks the account role and routes the user to the appropriate dashboard.
+- Administrator routes are protected server-side; hiding links is not the security mechanism.
+
+For a real multi-user deployment, use a persistent database such as PostgreSQL instead of SQLite.

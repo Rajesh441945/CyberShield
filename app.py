@@ -9,12 +9,8 @@ from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
-
-# IMPORTANT:
-# Set SECRET_KEY in Render Environment Variables.
 app.secret_key = os.environ.get("SECRET_KEY", "dev-only-change-me")
 
-# SQLite database file
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB = os.path.join(BASE_DIR, "cybershield.db")
 
@@ -29,7 +25,7 @@ def get_db():
 
 
 def init_db():
-    """Create database tables and the private admin account."""
+    """Create/migrate tables and create the private administrator account."""
     conn = get_db()
 
     conn.execute("""
@@ -37,10 +33,21 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT UNIQUE NOT NULL,
             password_hash TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'user',
             failed_attempts INTEGER DEFAULT 0,
             locked_until TEXT
         )
     """)
+
+    # Migration for an older CyberShield database that has no role column.
+    columns = {
+        row["name"]
+        for row in conn.execute("PRAGMA table_info(users)").fetchall()
+    }
+    if "role" not in columns:
+        conn.execute(
+            "ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'"
+        )
 
     conn.execute("""
         CREATE TABLE IF NOT EXISTS security_events (
@@ -56,27 +63,41 @@ def init_db():
     admin_username = os.environ.get("ADMIN_USERNAME")
     admin_password = os.environ.get("ADMIN_PASSWORD")
 
+    # The admin account is created/updated only from private environment variables.
+    # No admin credentials are displayed anywhere in the website.
     if admin_username and admin_password:
         existing = conn.execute(
-            "SELECT id FROM users WHERE username = ?",
+            "SELECT id FROM users WHERE username=?",
             (admin_username,)
         ).fetchone()
 
-        if not existing:
+        password_hash = generate_password_hash(admin_password)
+
+        if existing:
             conn.execute(
-                "INSERT INTO users (username, password_hash) VALUES (?, ?)",
-                (
-                    admin_username,
-                    generate_password_hash(admin_password)
-                )
+                """
+                UPDATE users
+                SET role='admin', password_hash=?,
+                    failed_attempts=0, locked_until=NULL
+                WHERE id=?
+                """,
+                (password_hash, existing["id"])
+            )
+        else:
+            conn.execute(
+                """
+                INSERT INTO users
+                (username, password_hash, role)
+                VALUES (?, ?, 'admin')
+                """,
+                (admin_username, password_hash)
             )
 
     conn.commit()
     conn.close()
 
 
-# This is intentionally OUTSIDE the function.
-# It runs when Gunicorn imports app.py.
+# Required for Gunicorn/Render: this runs when app.py is imported.
 init_db()
 
 
@@ -87,13 +108,26 @@ def login_required(view):
             flash("Please log in to access this page.", "danger")
             return redirect(url_for("login"))
         return view(*args, **kwargs)
+    return wrapped
 
+
+def admin_required(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if "username" not in session:
+            flash("Please log in to access this page.", "danger")
+            return redirect(url_for("login"))
+
+        if session.get("role") != "admin":
+            flash("This area is not available for your account.", "danger")
+            return redirect(url_for("user_dashboard"))
+
+        return view(*args, **kwargs)
     return wrapped
 
 
 def add_event(username, event_type, severity, message):
     conn = get_db()
-
     conn.execute(
         """
         INSERT INTO security_events
@@ -108,7 +142,6 @@ def add_event(username, event_type, severity, message):
             datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         )
     )
-
     conn.commit()
     conn.close()
 
@@ -170,16 +203,8 @@ def password_check(password):
     if re.search(r"[^A-Za-z0-9]", password):
         charset += 32
 
-    entropy = 0
-    if password and charset:
-        entropy = round(len(password) * math.log2(charset), 1)
-
-    if score <= 2:
-        level = "Weak"
-    elif score <= 4:
-        level = "Medium"
-    else:
-        level = "Strong"
+    entropy = round(len(password) * math.log2(charset), 1) if password and charset else 0
+    level = "Weak" if score <= 2 else "Medium" if score <= 4 else "Strong"
 
     return {
         "score": score,
@@ -202,7 +227,6 @@ def url_check(value):
         }
 
     test_url = value
-
     if not re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", test_url):
         test_url = "http://" + test_url
 
@@ -241,12 +265,7 @@ def url_check(value):
         "confirm", "signin"
     ]
 
-    word_count = sum(
-        1 for word in suspicious_words
-        if word in value.lower()
-    )
-
-    if word_count >= 2:
+    if sum(1 for word in suspicious_words if word in value.lower()) >= 2:
         risks.append(
             "The URL contains multiple words commonly seen in "
             "account or phishing lures."
@@ -265,12 +284,7 @@ def url_check(value):
         risks.append("The hostname does not look like a normal public domain.")
         score += 2
 
-    if score >= 4:
-        level = "High Risk"
-    elif score >= 2:
-        level = "Medium Risk"
-    else:
-        level = "Low Risk"
+    level = "High Risk" if score >= 4 else "Medium Risk" if score >= 2 else "Low Risk"
 
     recommendation = (
         "Do not open the link until you verify the domain through a trusted source."
@@ -294,24 +308,19 @@ def url_check(value):
 def get_stats():
     conn = get_db()
 
-    def count(sql):
-        return conn.execute(sql).fetchone()["count"]
+    def count(sql, params=()):
+        return conn.execute(sql, params).fetchone()["count"]
 
     data = {
-        "total": count(
-            "SELECT COUNT(*) AS count FROM security_events"
-        ),
+        "total": count("SELECT COUNT(*) AS count FROM security_events"),
         "high": count(
-            "SELECT COUNT(*) AS count FROM security_events "
-            "WHERE severity='HIGH'"
+            "SELECT COUNT(*) AS count FROM security_events WHERE severity='HIGH'"
         ),
         "medium": count(
-            "SELECT COUNT(*) AS count FROM security_events "
-            "WHERE severity='MEDIUM'"
+            "SELECT COUNT(*) AS count FROM security_events WHERE severity='MEDIUM'"
         ),
         "low": count(
-            "SELECT COUNT(*) AS count FROM security_events "
-            "WHERE severity='LOW'"
+            "SELECT COUNT(*) AS count FROM security_events WHERE severity='LOW'"
         ),
         "failed": count(
             "SELECT COUNT(*) AS count FROM security_events "
@@ -349,53 +358,52 @@ def index():
     return render_template("index.html")
 
 
-@app.route("/url-checker", methods=["GET", "POST"])
-def url_checker():
-    result = None
-
+@app.route("/register", methods=["GET", "POST"])
+def register():
     if request.method == "POST":
-        value = request.form.get("url", "")
-        result = url_check(value)
-
-        severity = (
-            "HIGH" if result["risk_score"] >= 4
-            else "MEDIUM" if result["risk_score"] >= 2
-            else "LOW"
-        )
-
-        add_event(
-            session.get("username", "guest"),
-            "URL_CHECK",
-            severity,
-            f"Checked URL: {value[:150]}"
-        )
-
-    return render_template("url_checker.html", result=result)
-
-
-@app.route("/password-checker", methods=["GET", "POST"])
-def password_checker():
-    result = None
-
-    if request.method == "POST":
+        username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
-        result = password_check(password)
+        confirm = request.form.get("confirm_password", "")
 
-        severity = (
-            "HIGH"
-            if result["level"] in ("Weak", "Very Weak")
-            else "LOW"
+        if len(username) < 3:
+            flash("Username must contain at least 3 characters.", "danger")
+            return redirect(url_for("register"))
+
+        if len(password) < 8:
+            flash("Password must contain at least 8 characters.", "danger")
+            return redirect(url_for("register"))
+
+        if password != confirm:
+            flash("Passwords do not match.", "danger")
+            return redirect(url_for("register"))
+
+        conn = get_db()
+        existing = conn.execute(
+            "SELECT id FROM users WHERE username=?",
+            (username,)
+        ).fetchone()
+
+        if existing:
+            conn.close()
+            flash("That username is already in use.", "danger")
+            return redirect(url_for("register"))
+
+        # Every self-registered account is always a normal user.
+        conn.execute(
+            """
+            INSERT INTO users
+            (username, password_hash, role)
+            VALUES (?, ?, 'user')
+            """,
+            (username, generate_password_hash(password))
         )
+        conn.commit()
+        conn.close()
 
-        # Only the result/level is logged. The actual password is NEVER saved.
-        add_event(
-            session.get("username", "guest"),
-            "PASSWORD_CHECK",
-            severity,
-            f"Password strength checked: {result['level']}"
-        )
+        flash("Account created. You can now sign in.", "success")
+        return redirect(url_for("login"))
 
-    return render_template("password_checker.html", result=result)
+    return render_template("register.html")
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -405,7 +413,6 @@ def login():
         password = request.form.get("password", "")
 
         conn = get_db()
-
         user = conn.execute(
             "SELECT * FROM users WHERE username=?",
             (username,)
@@ -413,42 +420,29 @@ def login():
 
         if not user:
             conn.close()
-
             add_event(
                 username or "unknown",
                 "LOGIN_FAILURE",
                 "MEDIUM",
                 "Login attempted with unknown username."
             )
-
             flash("Invalid username or password.", "danger")
             return redirect(url_for("login"))
 
-        # Check temporary lockout.
         if user["locked_until"]:
             try:
-                locked_until = datetime.fromisoformat(
-                    user["locked_until"]
-                )
-
+                locked_until = datetime.fromisoformat(user["locked_until"])
                 if datetime.now() < locked_until:
                     remaining = max(
                         1,
-                        int(
-                            (locked_until - datetime.now())
-                            .total_seconds() // 60
-                        )
+                        int((locked_until - datetime.now()).total_seconds() // 60)
                     )
-
                     conn.close()
-
                     flash(
-                        f"Account temporarily locked. "
-                        f"Try again in about {remaining} minute(s).",
+                        f"Account temporarily locked. Try again in about {remaining} minute(s).",
                         "danger"
                     )
                     return redirect(url_for("login"))
-
             except ValueError:
                 pass
 
@@ -461,72 +455,48 @@ def login():
                 """,
                 (user["id"],)
             )
-
             conn.commit()
             conn.close()
 
+            session.clear()
             session["username"] = username
+            session["role"] = user["role"]
 
-            add_event(
-                username,
-                "LOGIN_SUCCESS",
-                "LOW",
-                "Successful login."
-            )
+            add_event(username, "LOGIN_SUCCESS", "LOW", "Successful login.")
 
             flash("Login successful.", "success")
-            return redirect(url_for("dashboard"))
 
-        failed_attempts = user["failed_attempts"] + 1
+            if user["role"] == "admin":
+                return redirect(url_for("dashboard"))
 
-        if failed_attempts >= FAILED_LIMIT:
-            locked_until = (
-                datetime.now()
-                + timedelta(minutes=LOCKOUT_MINUTES)
-            )
+            return redirect(url_for("user_dashboard"))
 
+        failed = user["failed_attempts"] + 1
+
+        if failed >= FAILED_LIMIT:
+            locked_until = datetime.now() + timedelta(minutes=LOCKOUT_MINUTES)
             conn.execute(
                 """
                 UPDATE users
                 SET failed_attempts=?, locked_until=?
                 WHERE id=?
                 """,
-                (
-                    failed_attempts,
-                    locked_until.isoformat(),
-                    user["id"]
-                )
+                (failed, locked_until.isoformat(), user["id"])
             )
-
             severity = "HIGH"
-            message = (
-                f"Account locked after "
-                f"{failed_attempts} failed login attempts."
-            )
-
+            message = f"Account locked after {failed} failed login attempts."
         else:
             conn.execute(
-                """
-                UPDATE users
-                SET failed_attempts=?
-                WHERE id=?
-                """,
-                (failed_attempts, user["id"])
+                "UPDATE users SET failed_attempts=? WHERE id=?",
+                (failed, user["id"])
             )
-
             severity = "MEDIUM"
-            message = f"Failed login attempt #{failed_attempts}."
+            message = f"Failed login attempt #{failed}."
 
         conn.commit()
         conn.close()
 
-        add_event(
-            username,
-            "LOGIN_FAILURE",
-            severity,
-            message
-        )
-
+        add_event(username, "LOGIN_FAILURE", severity, message)
         flash("Invalid username or password.", "danger")
 
     return render_template("login.html")
@@ -534,12 +504,40 @@ def login():
 
 @app.route("/logout")
 def logout():
-    session.pop("username", None)
+    session.clear()
     return redirect(url_for("index"))
 
 
-@app.route("/dashboard")
+@app.route("/user-dashboard")
 @login_required
+def user_dashboard():
+    if session.get("role") == "admin":
+        return redirect(url_for("dashboard"))
+
+    username = session["username"]
+    conn = get_db()
+
+    events = conn.execute(
+        """
+        SELECT * FROM security_events
+        WHERE username=?
+        ORDER BY id DESC
+        LIMIT 20
+        """,
+        (username,)
+    ).fetchall()
+
+    conn.close()
+
+    return render_template(
+        "user_dashboard.html",
+        events=events,
+        username=username
+    )
+
+
+@app.route("/dashboard")
+@admin_required
 def dashboard():
     selected = request.args.get("severity", "ALL").upper()
 
@@ -578,10 +576,9 @@ def dashboard():
 
 
 @app.route("/report")
-@login_required
+@admin_required
 def report():
     conn = get_db()
-
     events = conn.execute(
         """
         SELECT * FROM security_events
@@ -589,7 +586,6 @@ def report():
         LIMIT 100
         """
     ).fetchall()
-
     conn.close()
 
     return render_template(
@@ -600,8 +596,56 @@ def report():
     )
 
 
+@app.route("/url-checker", methods=["GET", "POST"])
+def url_checker():
+    result = None
+
+    if request.method == "POST":
+        value = request.form.get("url", "")
+        result = url_check(value)
+
+        severity = (
+            "HIGH" if result["risk_score"] >= 4
+            else "MEDIUM" if result["risk_score"] >= 2
+            else "LOW"
+        )
+
+        add_event(
+            session.get("username", "guest"),
+            "URL_CHECK",
+            severity,
+            f"Checked URL: {value[:150]}"
+        )
+
+    return render_template("url_checker.html", result=result)
+
+
+@app.route("/password-checker", methods=["GET", "POST"])
+def password_checker():
+    result = None
+
+    if request.method == "POST":
+        password = request.form.get("password", "")
+        result = password_check(password)
+
+        severity = (
+            "HIGH" if result["level"] in ("Weak", "Very Weak")
+            else "LOW"
+        )
+
+        # Never store the actual password.
+        add_event(
+            session.get("username", "guest"),
+            "PASSWORD_CHECK",
+            severity,
+            f"Password strength checked: {result['level']}"
+        )
+
+    return render_template("password_checker.html", result=result)
+
+
 @app.route("/api/stats")
-@login_required
+@admin_required
 def api_stats():
     return jsonify(get_stats())
 
@@ -619,8 +663,4 @@ def api_url_check():
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(
-        host="0.0.0.0",
-        port=port,
-        debug=False
-    )
+    app.run(host="0.0.0.0", port=port, debug=False)

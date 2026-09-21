@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Create Account{% endblock %}
+{% block content %}
+
+<div class="center">
+  <form method="post" class="card form-card login-card">
+    <div class="login-icon">👤</div>
+    <span class="badge">NEW ACCOUNT</span>
+    <h1>Create Account</h1>
+    <p class="muted">
+      Create a CyberShield user account to save your activity to your
+      personal dashboard.
+    </p>
+
+    <label>Username</label>
+    <input name="username" minlength="3" autocomplete="username" required>
+
+    <label>Password</label>
+    <input name="password" type="password" minlength="8"
+           autocomplete="new-password" required>
+
+    <label>Confirm Password</label>
+    <input name="confirm_password" type="password"
+           autocomplete="new-password" required>
+
+    <button class="btn" type="submit">Create Account</button>
+
+    <div class="demo">
+      Already have an account?
+      <a href="{{ url_for('login') }}">Login</a>
+    </div>
+  </form>
+</div>
+
+{% endblock %}
