@@ -1,0 +1,13 @@
+<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block title %}CyberShield{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static',filename='style.css') }}"></head><body>
+<nav class="navbar"><a class="brand" href="{{ url_for('index') }}">🛡️ CyberShield</a>
+<button class="menu-btn" onclick="document.body.classList.toggle('menu-open')">☰</button>
+<div class="navlinks"><a href="{{ url_for('index') }}">Home</a><a href="{{ url_for('url_checker') }}">URL Scanner</a>
+<a href="{{ url_for('password_checker') }}">Password</a><a href="{{ url_for('dashboard') }}">Dashboard</a>
+<a href="{{ url_for('report') }}">Report</a>{% if session.get('username') %}<a href="{{ url_for('logout') }}">Logout</a>
+{% else %}<a href="{{ url_for('login') }}">Login</a>{% endif %}</div></nav>
+<main class="container">{% with messages=get_flashed_messages(with_categories=true) %}{% for category,message in messages %}
+<div class="alert {{category}}">{{message}}</div>{% endfor %}{% endwith %}{% block content %}{% endblock %}</main>
+<footer>🛡️ CyberShield • Defensive cybersecurity education project</footer></body></html>

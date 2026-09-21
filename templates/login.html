@@ -1,0 +1,5 @@
+{% extends "base.html" %}{% block title %}Secure Login{% endblock %}{% block content %}
+<div class="center"><form method="post" class="card form-card login-card"><div class="login-icon">🛡️</div>
+<span class="badge">PROTECTED ACCESS</span><h1>Secure Login</h1><p class="muted">Repeated failed attempts are recorded and can trigger temporary lockout.</p>
+<label>Username</label><input name="username" required><label>Password</label><input name="password" type="password" required>
+<button class="btn">Login Securely</button><div class="demo">Authorized users only. Credentials are configured privately by the administrator.</div></form></div>{% endblock %}

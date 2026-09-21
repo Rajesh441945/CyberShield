@@ -1,0 +1,20 @@
+{% extends "base.html" %}{% block title %}Dashboard{% endblock %}{% block content %}
+<div class="dash-head"><div><span class="badge">SECURITY OPERATIONS</span><h1>Security Dashboard</h1><p class="muted">Summary of recorded CyberShield events.</p></div>
+<a class="btn secondary" href="{{url_for('report')}}">📄 Security Report</a></div>
+<div class="dashboard">
+<div class="score-card"><span>Security Score</span><strong>{{stats.security_score}}</strong><small>/ 100</small><div class="meter"><div style="width:{{stats.security_score}}%"></div></div><p>Educational indicator based on recorded events.</p></div>
+<div class="stat"><span>Total Events</span><b>{{stats.total}}</b></div><div class="stat"><span>High Severity</span><b>{{stats.high}}</b></div>
+<div class="stat"><span>Failed Logins</span><b>{{stats.failed}}</b></div><div class="stat"><span>URL Checks</span><b>{{stats.url_checks}}</b></div>
+<div class="stat"><span>Password Checks</span><b>{{stats.password_checks}}</b></div><div class="stat"><span>Successful Logins</span><b>{{stats.success_logins}}</b></div></div>
+<div class="charts"><div class="card"><h2>Event Severity</h2>{% set mx=[stats.high,stats.medium,stats.low,1]|max %}
+<div class="bar"><span>HIGH</span><i style="width:{{stats.high/mx*100}}%"></i><b>{{stats.high}}</b></div>
+<div class="bar"><span>MEDIUM</span><i style="width:{{stats.medium/mx*100}}%"></i><b>{{stats.medium}}</b></div>
+<div class="bar"><span>LOW</span><i style="width:{{stats.low/mx*100}}%"></i><b>{{stats.low}}</b></div></div>
+<div class="card"><h2>Module Activity</h2><div class="activity"><div>🔗 URL Checks <b>{{stats.url_checks}}</b></div>
+<div>🔐 Password Checks <b>{{stats.password_checks}}</b></div><div>🚨 Failed Logins <b>{{stats.failed}}</b></div>
+<div>✅ Successful Logins <b>{{stats.success_logins}}</b></div></div></div></div>
+<div class="card"><div class="filter"><div><h2>Recent Security Events</h2><p class="muted">Filter by severity.</p></div>
+<div>{% for s in ["ALL","HIGH","MEDIUM","LOW"] %}<a class="{{'active' if selected_severity==s else ''}}" href="{{url_for('dashboard',severity=s)}}">{{s}}</a>{% endfor %}</div></div>
+<div class="table"><table><tr><th>Time</th><th>User</th><th>Type</th><th>Severity</th><th>Message</th></tr>
+{% for e in recent %}<tr><td>{{e.created_at}}</td><td>{{e.username}}</td><td>{{e.event_type}}</td><td class="{{e.severity|lower}}">{{e.severity}}</td><td>{{e.message}}</td></tr>
+{% else %}<tr><td colspan="5">No events.</td></tr>{% endfor %}</table></div></div>{% endblock %}

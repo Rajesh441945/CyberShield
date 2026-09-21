@@ -1,0 +1,12 @@
+{% extends "base.html" %}{% block title %}CyberShield{% endblock %}{% block content %}
+<section class="hero"><div><span class="badge">DEFENSIVE CYBERSECURITY PLATFORM</span>
+<h1>Protect. Detect.<br><span>Understand.</span></h1><p>Analyze common security indicators and understand cybersecurity risks through one simple platform.</p>
+<div class="actions"><a class="btn" href="{{url_for('url_checker')}}">🔍 Scan URL</a><a class="btn secondary" href="{{url_for('dashboard')}}">📊 Dashboard</a></div></div>
+<div class="hero-panel"><div class="shield">🛡️</div><h3>Security Monitoring</h3><p>URL • Password • Login Events</p></div></section>
+<h2>Security Modules</h2><div class="grid">
+<a class="card module" href="{{url_for('url_checker')}}">🔗<h3>URL Threat Scanner</h3><p>Analyze suspicious URL indicators and receive a risk score.</p></a>
+<a class="card module" href="{{url_for('password_checker')}}">🔐<h3>Password Analyzer</h3><p>Check password strength without storing the password.</p></a>
+<a class="card module" href="{{url_for('login')}}">🚨<h3>Login Security</h3><p>Monitor failed attempts and temporary account lockouts.</p></a>
+<a class="card module" href="{{url_for('dashboard')}}">📊<h3>Security Dashboard</h3><p>View events, severity, statistics and security score.</p></a></div>
+<div class="card"><span class="badge">SECURITY AWARENESS</span><h2>Simple habits make a difference</h2>
+<div class="tips"><div>🔑 Use unique passwords.</div><div>🔗 Verify domains.</div><div>📱 Enable MFA.</div><div>🔄 Keep software updated.</div></div></div>{% endblock %}

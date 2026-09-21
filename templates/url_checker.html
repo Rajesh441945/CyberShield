@@ -1,0 +1,10 @@
+{% extends "base.html" %}{% block title %}URL Scanner{% endblock %}{% block content %}
+<div class="page-head"><span class="badge">THREAT ANALYSIS</span><h1>Suspicious URL Scanner</h1>
+<p class="muted">Educational heuristic analysis; it does not prove that a URL is malicious.</p></div>
+<form method="post" class="card form-card"><label>URL to analyze</label><input name="url" placeholder="https://example.com/login" required>
+<button class="btn">🔍 Analyze URL</button></form>
+{% if result %}<div class="card result"><div class="result-top"><div><span class="badge">RESULT</span><h2>{{result.level}}</h2></div>
+<div class="score">{{result.risk_score}}<small>/10</small></div></div><div class="meter"><div style="width:{{result.risk_score*10}}%"></div></div>
+<div class="two"><div><h3>Indicators</h3>{% if result.risks %}<ul>{% for x in result.risks %}<li>⚠️ {{x}}</li>{% endfor %}</ul>
+{% else %}<p>✅ No obvious indicators found.</p>{% endif %}</div><div class="tip"><h3>Recommendation</h3><p>{{result.recommendation}}</p>
+<p><b>Domain:</b> {{result.domain}}</p><p><b>Scheme:</b> {{result.scheme}}</p></div></div></div>{% endif %}{% endblock %}
